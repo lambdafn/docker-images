@@ -1,0 +1,109 @@
+REPO = "elixir"
+ACCT = "lambdafn"
+
+# apt-cache showpkg <package-name>
+package_versions = %w[1.5.0-1 1.4.5-1 1.4.4-1 1.4.2-1 1.3.3-2]
+@otp_version = "20"
+@distro = "ubuntu"
+
+task default: %w[x11 nox]
+
+task :x11 do
+  opts = {
+    build_args: %w[ERLANG_PACKAGE=esl-erlang],
+    with_aliases: false,
+    tag_builder: lambda { |v|
+      "#{v}-otp#{@otp_version}-x11-#{@distro}"
+    }
+  }
+  build_version_hash(package_versions).each do |v|
+    build_versions(v[1], opts)
+  end
+end
+
+task :nox do
+  opts = {
+    tag_builder: lambda { |v|
+      "#{v}-otp#{@otp_version}-nox-#{@distro}"
+    }
+  }
+  build_version_hash(package_versions).each do |v|
+    build_versions(v[1], opts)
+  end
+end
+
+# Takes an array like [["1.4.5-1", "1.4"], "1.4.4-1", "1.4.2-1"] and calls
+# build_version for each element
+def build_versions(versions, opts)
+  versions.each do |v|
+    case v
+    when String
+      build_version(v, opts)
+    when Array
+      primary, *aliases = *v
+      build_version(primary, opts, aliases: aliases)
+    end
+  end
+end
+
+def build_version(primary, opts, aliases: nil)
+  elixir_version = primary.split("-").first
+
+  tags = []
+  if opts[:tag_builder] then
+    tag = opts[:tag_builder].call elixir_version
+    tags.push "-t #{ACCT}/#{REPO}:" + tag
+  end
+
+  build_args = %W[ELIXIR_VERSION=#{primary}]
+  build_args += opts[:build_args] if opts and opts[:build_args]
+  build_args = build_args.map { |a| "--build-arg #{a}" }
+
+  unless opts and opts[:with_aliases] == false then
+    aliases&.each { |a| tags.push "-t #{ACCT}/#{REPO}:#{a}" }
+  end
+
+  sh "docker build #{tags.join(" ")} #{build_args.join(" ")} ."
+end
+
+def minor_version(v)
+  return (v.split("."))[0,2].join(".")
+end
+
+# Takes an array of Debian package versions (such as
+# ["1.5.0-1", "1.4.5-1", "1.4.4-1", "1.4.2-1", "1.3.3-2"]) and restructures
+# into a hash of minor versions to arrays of all the full package versions
+# available for each minor version.
+#
+# Each element in the array can be either a string package version, or an
+# array where the first element is the full package version and additional
+# elements are 'aliases' to be created as additional Docker tags for the
+# full version.
+#
+# Example return value:
+# {
+#   "1.5"=>[["1.5.0-1", "1.5"]],
+#   "1.4"=>[["1.4.5-1", "1.4"], "1.4.4-1", "1.4.2-1"],
+#   "1.3"=>[["1.3.3-2", "1.3"]]
+# }
+def build_version_hash(versions)
+  def add_alias(versions)
+    versions[0] = [
+      versions[0],
+      minor_version(versions[0])
+    ]
+    versions
+  end
+
+  version_hash = {}
+
+  versions.each do |v|
+    m = minor_version(v)
+    version_hash[m] ||= Array.new
+    version_hash[m].push(v)
+  end
+
+  version_hash.each do |k,v|
+    version_hash[k] = add_alias(v.sort.reverse)
+  end
+end
