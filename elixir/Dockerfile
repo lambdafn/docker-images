@@ -3,6 +3,9 @@ FROM ubuntu:17.04
 ARG ERLANG_PACKAGE=erlang-nox
 ARG ELIXIR_VERSION
 
+# Elixir requires UTF-8
+ENV LANG=C.UTF-8
+
 RUN apt-get update                                                          && \
     apt-get install -y wget                                                 && \
     wget https://packages.erlang-solutions.com/erlang-solutions_1.0_all.deb && \
