@@ -1,4 +1,4 @@
-FROM ubuntu:17.04
+FROM ubuntu:16.04
 
 ARG ERLANG_PACKAGE=erlang-nox
 ARG ELIXIR_VERSION
